@@ -3,6 +3,12 @@ package com.example.qa.petclinic;
 import com.example.qa.petclinic.model.OwnerFields;
 import com.example.qa.petclinic.model.OwnerResponse;
 import com.example.qa.petclinic.model.TestData;
+import io.qameta.allure.Allure;
+import io.qameta.allure.Epic;
+import io.qameta.allure.Feature;
+import io.qameta.allure.Severity;
+import io.qameta.allure.SeverityLevel;
+import io.qameta.allure.Story;
 import io.restassured.http.ContentType;
 import io.restassured.path.json.JsonPath;
 import io.restassured.response.Response;
@@ -22,6 +28,8 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
+@Epic("PetClinic REST API")
+@Feature("Owners")
 class OwnerTest extends ApiTest {
     private static final Logger log = LoggerFactory.getLogger(OwnerTest.class);
 
@@ -45,38 +53,52 @@ class OwnerTest extends ApiTest {
     }
 
     @Test
+    @Story("CRUD")
+    @Severity(SeverityLevel.CRITICAL)
     @DisplayName("Владелец: создание, чтение, обновление и удаление")
     void ownerCrudFlow() {
-        // Создание
         OwnerFields original = TestData.owner();
-        Response createResponse = createOwner(original);
-        createResponse.then().statusCode(201).contentType(ContentType.JSON);
-        OwnerResponse created = createResponse.as(OwnerResponse.class);
-        assertThat(created.id()).isNotNull().isPositive();
-        int ownerId = created.id();
-        assertThat(created.fields()).isEqualTo(original);
-        assertThat(created.pets()).isEmpty();
-        assertThat(createResponse.header("Location")).endsWith("/api/owners/" + ownerId);
+        int ownerId = Allure.step("Создать владельца", () -> {
+            Response createResponse = createOwner(original);
+            createResponse.then().statusCode(201).contentType(ContentType.JSON);
+            OwnerResponse created = createResponse.as(OwnerResponse.class);
+            assertThat(created.id()).isNotNull().isPositive();
+            assertThat(created.fields()).isEqualTo(original);
+            assertThat(created.pets()).isEmpty();
+            assertThat(createResponse.header("Location")).endsWith("/api/owners/" + created.id());
+            return created.id();
+        });
 
-        // Чтение
-        OwnerResponse fetched = fetchOwner(ownerId);
-        assertThat(fetched.id()).isEqualTo(ownerId);
-        assertThat(fetched.fields()).isEqualTo(original);
-        assertThat(fetched.pets()).isEmpty();
+        Allure.step("Прочитать созданного владельца по id", () -> {
+            OwnerResponse fetched = fetchOwner(ownerId);
+            assertThat(fetched.id()).isEqualTo(ownerId);
+            assertThat(fetched.fields()).isEqualTo(original);
+            assertThat(fetched.pets()).isEmpty();
+        });
 
-        // Обновление: меняются все редактируемые поля
         OwnerFields changed = TestData.anotherOwner();
-        jsonRequest(changed).put(OWNER, ownerId).then().statusCode(204);
-        OwnerResponse afterUpdate = fetchOwner(ownerId);
-        assertThat(afterUpdate.id()).isEqualTo(ownerId);
-        assertThat(afterUpdate.fields()).isEqualTo(changed);
+        Allure.step("Обновить все редактируемые поля", () -> {
+            jsonRequest(changed).put(OWNER, ownerId).then().statusCode(204);
+        });
 
-        // Удаление
-        request().delete(OWNER, ownerId).then().statusCode(204);
-        request().get(OWNER, ownerId).then().statusCode(404);
+        Allure.step("Прочитать владельца после обновления", () -> {
+            OwnerResponse afterUpdate = fetchOwner(ownerId);
+            assertThat(afterUpdate.id()).isEqualTo(ownerId);
+            assertThat(afterUpdate.fields()).isEqualTo(changed);
+        });
+
+        Allure.step("Удалить владельца", () -> {
+            request().delete(OWNER, ownerId).then().statusCode(204);
+        });
+
+        Allure.step("Убедиться, что владелец больше не доступен", () -> {
+            request().get(OWNER, ownerId).then().statusCode(404);
+        });
     }
 
     @ParameterizedTest(name = "{0}")
+    @Story("Валидация")
+    @Severity(SeverityLevel.NORMAL)
     @MethodSource("invalidOwners")
     @DisplayName("Владелец: невалидные данные отклоняются с ошибкой валидации")
     void rejectsInvalidOwner(String caseName, OwnerFields invalid) {
@@ -125,4 +147,5 @@ class OwnerTest extends ApiTest {
                 .then().statusCode(200).contentType(ContentType.JSON)
                 .extract().as(OwnerResponse.class);
     }
+
 }
